@@ -452,30 +452,80 @@ resource "nsxt_policy_security_policy" "policy1" {
   }
 }
 
-##resource "nsxt_policy_gateway_policy" "test" {
-##  display_name    = "tf-gw-policy"
-##  description     = "Terraform provisioned Gateway Policy"
-##  category        = "LocalGatewayRules"
-##  locked          = false
-##  sequence_number = 3
-##  stateful        = true
-##  tcp_strict      = false
-##
-##  tag {
-##    scope = "color"
-##    tag   = "orange"
-##  }
-##
-##  rule {
-##    display_name       = "rule1"
-##    destination_groups = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
-##    disabled           = true
-##    action             = "DROP"
-##    logged             = true
-##    scope              = [data.nsxt_policy_tier1_gateway.Tier1-gw.path]
-##  }
-##
-##  lifecycle {
-##    create_before_destroy = true
-##  }
-##}
+resource "nsxt_policy_gateway_policy" "OpenCart-Policy" {
+  display_name    = "OpenCart-Policy"
+  description     = "OpenCart GW Policy"
+  category        = "LocalGatewayRules"
+  locked          = false
+  sequence_number = 3
+  stateful        = true
+  tcp_strict      = false
+
+  tag {
+    scope = "color"
+    tag   = "orange"
+  }
+
+  rule {
+    display_name       = "HTTP allow inbound"
+    destination_groups = [nsxt_policy_group.OC-Web-Group.path]
+    disabled           = true
+    action             = "ALLOW"
+    services           = [data.nsxt_policy_service.http.path]
+    logged             = true
+    scope              = [nsxt_policy_tier1_gateway.tier1_gw.path]
+  }
+
+  rule {
+    display_name       = "ICMP allow inbound"
+    destination_groups = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
+    disabled           = true
+    action             = "ALLOW"
+    services           = [data.nsxt_policy_service.icmp.path]
+    logged             = true
+    scope              = [nsxt_policy_tier1_gateway.tier1_gw.path]
+  }
+
+  rule {
+    display_name       = "SSH allow inbound"
+    destination_groups = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
+    disabled           = true
+    action             = "ALLOW"
+    services           = [data.nsxt_policy_service.ssh.path]
+    logged             = true
+    scope              = [nsxt_policy_tier1_gateway.tier1_gw.path]
+  }
+
+  rule {
+    display_name       = "RDP allow inbound"
+    destination_groups = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
+    disabled           = true
+    action             = "ALLOW"
+    services           = [data.nsxt_policy_service.rdp.path]
+    logged             = true
+    scope              = [nsxt_policy_tier1_gateway.tier1_gw.path]
+  }
+
+  rule {
+    display_name       = "NTP allow outbound"
+    source_groups       = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
+    disabled           = true
+    action             = "ALLOW"
+    services           = [data.nsxt_policy_service.ntp.path]
+    logged             = true
+    scope              = [nsxt_policy_tier1_gateway.tier1_gw.path]
+  }
+
+  rule {
+    display_name       = "DNS allow outbound"
+    source_groups       = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
+    disabled           = true
+    action             = "ALLOW"
+    services           = [data.nsxt_policy_service.dns-tcp.path, data.nsxt_policy_service.dns-udp.path]
+    logged             = true
+    scope              = [nsxt_policy_tier1_gateway.tier1_gw.path]
+  }
+  lifecycle {
+    create_before_destroy = true
+  }
+}
