@@ -16,7 +16,7 @@ data "vsphere_content_library_item" "item" {
 ##   wait_for_guest_net_timeout = 0
 ##   num_cpus         = 2
 ##   memory           = 1024
-##   guest_id         = "other3xLinux64Guest"
+##   guest_id         = "ubuntu64Guest"
  
 ##   network_interface {
 ##     network_id = data.vsphere_network.network.id
@@ -53,7 +53,7 @@ resource "vsphere_virtual_machine" "OC-Apache-A" {
   wait_for_guest_net_timeout = 0
   num_cpus         = 2
   memory           = 1024
-  guest_id         = "other3xLinux64Guest"
+  guest_id         = "ubuntu64Guest"
  
   network_interface {
     network_id = data.vsphere_network.network.id
@@ -90,7 +90,7 @@ resource "vsphere_virtual_machine" "OC-Apache-B" {
   wait_for_guest_net_timeout = 0
   num_cpus         = 2
   memory           = 1024
-  guest_id         = "other3xLinux64Guest"
+  guest_id         = "ubuntu64Guest"
  
   network_interface {
     network_id = data.vsphere_network.network.id
@@ -127,7 +127,7 @@ resource "vsphere_virtual_machine" "OC-DB" {
   wait_for_guest_net_timeout = 0
   num_cpus         = 2
   memory           = 1024
-  guest_id         = "other3xLinux64Guest"
+  guest_id         = "ubuntu64Guest"
  
   network_interface {
     network_id = data.vsphere_network.network.id
