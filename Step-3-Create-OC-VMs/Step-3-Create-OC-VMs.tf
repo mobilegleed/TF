@@ -13,6 +13,7 @@ data "vsphere_content_library_item" "item" {
 ##   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
 ##   datastore_id     = data.vsphere_datastore.datastore.id
 ##   folder           = "Holodeck"
+##   wait_for_guest_net_timeout = 0
 ##   num_cpus         = 2
 ##   memory           = 1024
 ##   guest_id         = "other3xLinux64Guest"
@@ -43,6 +44,7 @@ resource "vsphere_virtual_machine" "OC-Apache-A" {
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
   folder           = "Holodeck"
+  wait_for_guest_net_timeout = 0
   num_cpus         = 2
   memory           = 1024
   guest_id         = "other3xLinux64Guest"
@@ -73,6 +75,7 @@ resource "vsphere_virtual_machine" "OC-Apache-B" {
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
   folder           = "Holodeck"
+  wait_for_guest_net_timeout = 0
   num_cpus         = 2
   memory           = 1024
   guest_id         = "other3xLinux64Guest"
@@ -103,6 +106,7 @@ resource "vsphere_virtual_machine" "OC-DB" {
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
   folder           = "Holodeck"
+  wait_for_guest_net_timeout = 0
   num_cpus         = 2
   memory           = 1024
   guest_id         = "other3xLinux64Guest"
