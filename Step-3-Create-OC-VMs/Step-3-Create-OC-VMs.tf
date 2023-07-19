@@ -37,6 +37,12 @@ data "vsphere_content_library_item" "item" {
 ##       user-data = base64encode(file("${path.module}/tanzu-ws.yaml"))
 ##    }
 ##  }
+##  lifecycle {
+##     ignore_changes = [
+##      ept_rvi_mode,
+##      hv_mode
+##    ]
+##  }
 ## }
 
 resource "vsphere_virtual_machine" "OC-Apache-A" {
@@ -68,6 +74,12 @@ resource "vsphere_virtual_machine" "OC-Apache-A" {
       user-data = base64encode(file("${path.module}/oc-web-a.yaml"))
    }
  }
+ lifecycle {
+    ignore_changes = [
+      ept_rvi_mode,
+      hv_mode
+    ]
+  }
 }
 
 resource "vsphere_virtual_machine" "OC-Apache-B" {
@@ -99,6 +111,12 @@ resource "vsphere_virtual_machine" "OC-Apache-B" {
       user-data = base64encode(file("${path.module}/oc-web-b.yaml"))
    }
  }
+ lifecycle {
+    ignore_changes = [
+      ept_rvi_mode,
+      hv_mode
+    ]
+  }
 }
 
 resource "vsphere_virtual_machine" "OC-DB" {
@@ -130,4 +148,10 @@ resource "vsphere_virtual_machine" "OC-DB" {
       user-data = base64encode(file("${path.module}/oc-db.yaml"))
    }
  }
+ lifecycle {
+    ignore_changes = [
+      ept_rvi_mode,
+      hv_mode
+    ]
+  }
 }
