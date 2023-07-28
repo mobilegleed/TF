@@ -1,4 +1,3 @@
-
 terraform {
   required_providers {
     nsxt = {
@@ -40,6 +39,30 @@ data "vsphere_network" "network" {
   datacenter_id = data.vsphere_datacenter.dc.id
 }
  
+data "vsphere_network" OC-Web-Segment {
+  name          = "OC-Web-Segment"
+  datacenter_id = data.vsphere_datacenter.dc.id
+
+  depends_on    = [
+    time_sleep.wait,
+    nsxt_policy_segment.OC-Web-Segment
+  ]
+}
+
+data "vsphere_network" OC-DB-Segment {
+  name          = "OC-DB-Segment"
+  datacenter_id = data.vsphere_datacenter.dc.id
+
+  depends_on    = [
+    time_sleep.wait,
+    nsxt_policy_segment.OC-Web-Segment
+  ]
+}
+
+#########################################################################
+################## CREATE CONTENT LIBRARY ###############################
+#########################################################################
+
 resource "vsphere_content_library" "library" {
   name            = "Holo Library"
   storage_backing = [data.vsphere_datastore.datastore.id]
@@ -60,6 +83,10 @@ resource "vsphere_content_library_item" "ubuntu_20_04" {
   file_url = "https://cloud-images.ubuntu.com/releases/focal/release/ubuntu-20.04-server-cloudimg-amd64.ova"
 }
  
+#########################################################################
+################## CREATE T1 and Segments ###############################
+#########################################################################
+
 data "nsxt_policy_tier0_gateway" "VLC-Tier-0" {
   display_name = "VLC-Tier-0"
 }
@@ -72,9 +99,25 @@ data "nsxt_policy_transport_zone" "mgmt-domain-tz-overlay01" {
   display_name = "mgmt-domain-tz-overlay01"
 }
 
+resource "nsxt_policy_dhcp_server" "dhcp-web" {
+  display_name      = "Web Segment DHCP"
+  description       = "Web Segment DHCP"
+  edge_cluster_path = data.nsxt_policy_edge_cluster.EC-01.path
+  lease_time        = 60
+  server_addresses  = ["10.1.1.2/27"]
+}
+
+resource "nsxt_policy_dhcp_server" "dhcp-db" {
+  display_name      = "DB Segment DHCP"
+  description       = "DB Segment DHCP"
+  edge_cluster_path = data.nsxt_policy_edge_cluster.EC-01.path
+  lease_time        = 60
+  server_addresses  = ["10.1.1.34/27"]
+}
+
 resource "nsxt_policy_tier1_gateway" "tier1_gw" {
   description               = "Tier-1 provisioned by Terraform"
-  display_name              = "Tier1-gw1"
+  display_name              = "tier1_gw1"
   nsx_id                    = "predefined_id"
   edge_cluster_path         = data.nsxt_policy_edge_cluster.EC-01.path
   failover_mode             = "PREEMPTIVE"
@@ -92,50 +135,69 @@ resource "nsxt_policy_tier1_gateway" "tier1_gw" {
 
   route_advertisement_rule {
     name                      = "rule1"
-    action                    = "DENY"
-    subnets                   = ["20.0.0.0/24", "21.0.0.0/24"]
+    action                    = "PERMIT"
+    subnets                   = ["10.1.1.0/27", "10.1.1.32/27"]
     prefix_operator           = "GE"
     route_advertisement_types = ["TIER1_CONNECTED"]
   }
 }
 
 resource "nsxt_policy_segment" "OC-Web-Segment" {
-  depends_on = [ nsxt_policy_tier1_gateway.tier1_gw ]
   display_name        = "OC-Web-Segment"
   description         = "OC-Web-Segment"
   connectivity_path   = nsxt_policy_tier1_gateway.tier1_gw.path
   transport_zone_path = data.nsxt_policy_transport_zone.mgmt-domain-tz-overlay01.path
+  dhcp_config_path    = nsxt_policy_dhcp_server.dhcp-web.path
 
   subnet {
     cidr        = "10.1.1.1/27"
+    dhcp_ranges = [ "10.1.1.3-10.1.1.17" ]
+    
+    dhcp_v4_config {
+      dns_servers    = ["10.0.0.221"]
+      lease_time     = 60
+      server_address = "10.1.1.2/27"
     }
+  }
 }
 
 resource "nsxt_policy_segment" "OC-DB-Segment" {
-  depends_on = [ nsxt_policy_tier1_gateway.tier1_gw ]
   display_name        = "OC-DB-Segment"
   description         = "OC-DB-Segment"
   connectivity_path   = nsxt_policy_tier1_gateway.tier1_gw.path
   transport_zone_path = data.nsxt_policy_transport_zone.mgmt-domain-tz-overlay01.path
+  dhcp_config_path    = nsxt_policy_dhcp_server.dhcp-db.path
 
   subnet {
     cidr        = "10.1.1.33/27"
+    dhcp_ranges = [ "10.1.1.35-10.1.1.49" ]
+    
+    dhcp_v4_config {
+      dns_servers    = ["10.0.0.221"]
+      lease_time     = 60
+      server_address = "10.1.1.34/27"
     }
+  }
 }
 
-##data "vsphere_content_library" "library" {
-##  name = "Holo Library"
-##  depends_on = [ vsphere_content_library.library ]
-##}
+#########################################################################
+################## CREATE OC VIRTUAL MACHINES ###########################
+#########################################################################
 
-##data "vsphere_content_library_item" "item" {
-##  name       = "Ubuntu 18.04"
-##  type       = "ovf"
-##  library_id = data.vsphere_content_library.library.id
-##}
+# Wait before creating VMs.  Need to give vSphere time to detect NSX segments.
+resource "time_sleep" "wait" {
+  create_duration = "60s"
+}
 
 resource "vsphere_virtual_machine" "OC-Apache-A" {
-  depends_on       = [vsphere_content_library.library]
+
+  depends_on       = [
+#    vsphere_content_library_item.ubuntu_18_04, 
+#    nsxt_policy_segment.OC-Web-Segment, 
+    vsphere_virtual_machine.OC-DB,
+    time_sleep.wait
+  ]
+
   name             = "OC-Apache-A"
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
@@ -146,7 +208,8 @@ resource "vsphere_virtual_machine" "OC-Apache-A" {
   guest_id         = "ubuntu64Guest"
  
   network_interface {
-    network_id = data.vsphere_network.network.id
+    network_id = data.vsphere_network.OC-Web-Segment.id
+#    network_id = data.vsphere_network.network.id
   }
   disk {
     label = "disk0"
@@ -173,7 +236,14 @@ resource "vsphere_virtual_machine" "OC-Apache-A" {
 }
 
 resource "vsphere_virtual_machine" "OC-Apache-B" {
-  depends_on       = [vsphere_content_library.library]
+
+  depends_on       = [
+#    vsphere_content_library_item.ubuntu_18_04, 
+#    nsxt_policy_segment.OC-Web-Segment, 
+    vsphere_virtual_machine.OC-DB,
+    time_sleep.wait
+  ]
+
   name             = "OC-Apache-B"
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
@@ -184,7 +254,8 @@ resource "vsphere_virtual_machine" "OC-Apache-B" {
   guest_id         = "ubuntu64Guest"
  
   network_interface {
-    network_id = data.vsphere_network.network.id
+    network_id = data.vsphere_network.OC-Web-Segment.id
+#    network_id = data.vsphere_network.network.id
   }
   disk {
     label = "disk0"
@@ -211,7 +282,13 @@ resource "vsphere_virtual_machine" "OC-Apache-B" {
 }
 
 resource "vsphere_virtual_machine" "OC-DB" {
-  depends_on       = [vsphere_content_library.library]
+
+  depends_on       = [
+#    vsphere_content_library_item.ubuntu_18_04, 
+#    nsxt_policy_segment.OC-Web-Segment, 
+    time_sleep.wait
+  ]
+
   name             = "OC-DB"
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
@@ -222,7 +299,7 @@ resource "vsphere_virtual_machine" "OC-DB" {
   guest_id         = "ubuntu64Guest"
  
   network_interface {
-    network_id = data.vsphere_network.network.id
+    network_id = data.vsphere_network.OC-DB-Segment.id
   }
   disk {
     label = "disk0"
@@ -247,20 +324,10 @@ resource "vsphere_virtual_machine" "OC-DB" {
     ]
   }
 }
-##data "vsphere_virtual_machine" "OC-Apache-A" {
-##  name          = "OC-Apache-A"
-##  datacenter_id = data.vsphere_datacenter.dc.id
-##}
 
-##data "vsphere_virtual_machine" "OC-Apache-B" {
-##  name          = "OC-Apache-B"
-##  datacenter_id = data.vsphere_datacenter.dc.id
-##}
-
-##data "vsphere_virtual_machine" "OC-DB" {
-##  name          = "OC-DB"
-##  datacenter_id = data.vsphere_datacenter.dc.id
-##}
+#########################################################################
+################## CREATE Tags and Groups ###############################
+#########################################################################
 
 resource "nsxt_policy_vm_tags" "OC-Apache-A-tags" {
   instance_id = vsphere_virtual_machine.OC-Apache-A.id
@@ -304,7 +371,6 @@ resource "nsxt_policy_group" "OC-Web-Group" {
   }
 }
 
-
 resource "nsxt_policy_group" "OC-DB-Group" {
   display_name = "OC-DB-Group"
   description  = "OC DB Group"
@@ -318,6 +384,32 @@ resource "nsxt_policy_group" "OC-DB-Group" {
     }
   }
 }
+
+resource "nsxt_policy_group" "NTP-Server-Group" {
+  display_name = "NTP-Server-Group"
+  description  = "NTP-Server-Group"
+
+  criteria {
+    ipaddress_expression {
+      ip_addresses = ["10.0.0.221"]
+    }
+  }
+}
+
+resource "nsxt_policy_group" "DNS-Server-Group" {
+  display_name = "DNS-Server-Group"
+  description  = "DNS-Server-Group"
+
+  criteria {
+    ipaddress_expression {
+      ip_addresses = ["10.0.0.221"]
+    }
+  }
+}
+
+#########################################################################
+##################    DEFINE SERVICES     ###############################
+#########################################################################
 
 data "nsxt_policy_service" "ssh" {
   display_name = "SSH"
@@ -351,6 +443,27 @@ data "nsxt_policy_service" "dns-udp" {
   display_name = "DNS-UDP"
 }
 
+data "nsxt_policy_context_profile" "http" {
+  display_name = "HTTP"
+}
+
+data "nsxt_policy_context_profile" "mysql" {
+  display_name = "MYSQL"
+}
+
+data "nsxt_policy_context_profile" "ssh" {
+  display_name = "SSH"
+}
+
+data "nsxt_policy_context_profile" "rdp" {
+  display_name = "RDP"
+}
+
+
+#########################################################################
+##################   DEFINE DFW Policy    ###############################
+#########################################################################
+
 resource "nsxt_policy_security_policy" "policy1" {
   display_name = "policy1"
   description  = "Terraform provisioned Security Policy"
@@ -380,6 +493,7 @@ resource "nsxt_policy_security_policy" "policy1" {
 
   rule {
     display_name       = "HTTP allow inbound"
+    profiles           = [data.nsxt_policy_context_profile.http.path]
     source_groups      = ["10.0.0.0/24"]
     destination_groups = [nsxt_policy_group.OC-Web-Group.path]
     scope              = [nsxt_policy_group.OC-Web-Group.path]
@@ -390,6 +504,7 @@ resource "nsxt_policy_security_policy" "policy1" {
 
   rule {
     display_name       = "Web to DB"
+    profiles           = [data.nsxt_policy_context_profile.mysql.path]
     source_groups      = [nsxt_policy_group.OC-Web-Group.path]
     destination_groups = [nsxt_policy_group.OC-DB-Group.path]
     scope              = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
@@ -410,6 +525,7 @@ resource "nsxt_policy_security_policy" "policy1" {
 
   rule {
     display_name       = "SSH allow inbound"
+    profiles           = [data.nsxt_policy_context_profile.ssh.path]
     source_groups      = ["10.0.0.0/24"]
     destination_groups = [nsxt_policy_group.OC-DB-Group.path, nsxt_policy_group.OC-Web-Group.path]
     scope              = [nsxt_policy_group.OC-Web-Group.path, nsxt_policy_group.OC-DB-Group.path]
@@ -420,6 +536,7 @@ resource "nsxt_policy_security_policy" "policy1" {
 
   rule {
     display_name       = "RDP allow inbound"
+    profiles           = [data.nsxt_policy_context_profile.rdp.path]
     source_groups      = ["10.0.0.0/24"]
     destination_groups = [nsxt_policy_group.OC-DB-Group.path, nsxt_policy_group.OC-Web-Group.path]
     scope              = [nsxt_policy_group.OC-DB-Group.path]
@@ -451,6 +568,10 @@ resource "nsxt_policy_security_policy" "policy1" {
     create_before_destroy = true
   }
 }
+
+#########################################################################
+##################   DEFINE GWF Policy    ###############################
+#########################################################################
 
 resource "nsxt_policy_gateway_policy" "OpenCart-Policy" {
   display_name    = "OpenCart-Policy"
@@ -529,3 +650,4 @@ resource "nsxt_policy_gateway_policy" "OpenCart-Policy" {
     create_before_destroy = true
   }
 }
+
